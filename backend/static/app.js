@@ -66,14 +66,18 @@ function app() {
 
     // --- init ---
     async init() {
-      await this.loadHealth();
-      await this.loadPresets();
-      await this.loadTestImages();
-      this.$watch('params', () => this.scheduleRender(), { deep: true });
-      // deep link za brzu proveru/demo: /?demo=03_logo_bw.png
-      const demo = new URLSearchParams(window.location.search).get('demo');
-      if (demo) {
-        await this.loadTestImage(demo);
+      try {
+        await this.loadHealth();
+        await this.loadPresets();
+        await this.loadTestImages();
+        this.$watch('params', () => this.scheduleRender(), { deep: true });
+        // deep link za brzu proveru/demo: /?demo=03_logo_bw.png
+        const demo = new URLSearchParams(window.location.search).get('demo');
+        if (demo) {
+          await this.loadTestImage(demo);
+        }
+      } catch (error) {
+        this.showError('Init: ' + error.message);
       }
     },
 
@@ -99,7 +103,8 @@ function app() {
 
     showError(message) {
       this.error = String(message);
-      window.setTimeout(() => { if (this.error === String(message)) this.error = ''; }, 9000);
+      if (window.console) window.console.error('[img2vec]', message);
+      window.setTimeout(() => { if (this.error === String(message)) this.error = ''; }, 12000);
     },
 
     showNotice(message) {
@@ -142,8 +147,14 @@ function app() {
 
     onFile(event) {
       const files = event.target.files;
-      if (files && files.length) this.uploadFile(files[0]);
-      event.target.value = '';
+      if (!files || !files.length) {
+        this.showError('Fajl nije izabran.');
+        return;
+      }
+      const file = files[0];
+      this.uploadFile(file).finally(() => {
+        event.target.value = '';
+      });
     },
 
     async uploadFile(file) {

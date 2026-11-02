@@ -4,9 +4,51 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>img2vec · Laser / LightBurn</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=5">
+  <!--
+    Vazno: app.js mora da se izvrsi PRE alpine.min.js. Alpine 3 CDN build poziva
+    start() preko queueMicrotask, pa ako se ucita prvi, x-data="app()" padne jer
+    funkcija app() jos ne postoji i ceo UI ostane bez ikakve interaktivnosti.
+  -->
+  <script>
+    (function () {
+      function showBootError(message) {
+        var box = document.getElementById('boot-error');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'boot-error';
+          box.style.cssText = 'position:fixed;right:18px;bottom:18px;max-width:480px;' +
+            'padding:11px 16px;border-radius:10px;background:#3a1d1d;' +
+            'border:1px solid #6b3030;color:#ffd9d9;z-index:99;' +
+            'font:13px/1.4 system-ui,sans-serif;cursor:pointer;';
+          box.addEventListener('click', function () { box.remove(); });
+          document.body.appendChild(box);
+        }
+        box.textContent = 'UI greska: ' + message;
+      }
+      window.addEventListener('error', function (event) {
+        showBootError((event.error && event.error.message) || event.message || 'nepoznata greska');
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        showBootError((reason && reason.message) || String(reason));
+      });
+      // self-check: Alpine mora da inicijalizuje x-data za par sekundi
+      window.addEventListener('load', function () {
+        window.setTimeout(function () {
+          var root = document.querySelector('[x-data]');
+          var initialised = root && root._x_dataStack;
+          if (!initialised) {
+            showBootError(
+              'UI nije inicijalizovan (Alpine.js nije pokrenuo app). ' +
+              'Osvezi stranicu sa Ctrl+Shift+R.');
+          }
+        }, 2500);
+      });
+    })();
+  </script>
+  <script defer src="/static/app.js?v=5"></script>
   <script defer src="/static/vendor/alpine.min.js"></script>
-  <script defer src="/static/app.js"></script>
 </head>
 <body x-data="app()" x-init="init()" :class="{ 'is-busy': loading, 'is-error': error }">
 

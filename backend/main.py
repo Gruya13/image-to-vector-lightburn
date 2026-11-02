@@ -166,6 +166,18 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="img2vec-lightburn", version=__version__, lifespan=lifespan)
+
+
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    """UI fajlovi se menjaju tokom razvoja - sprecavamo 304 za static/ i /."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") or path == "/":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
