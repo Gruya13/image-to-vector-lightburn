@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv-cache/
+.uv-python/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Modeli (preuzimaju se automatski, ne idu u git)
+/models/**
+!/models/.gitkeep
+
+# Kes alata (ezdxf, numba i sl.)
+.cache/
+
+# Alati kompajlirani lokalno (ne i frontend vendor biblioteke)
+/vendor/*
+!/vendor/.gitkeep
+
+# Izlazi
+out/
+output/
+tmp/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

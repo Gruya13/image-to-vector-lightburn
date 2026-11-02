@@ -1,0 +1,92 @@
+[
+  {
+    "file": "01_portret_foto.png",
+    "category": "Portret (foto)",
+    "purpose": "rembg maska + XDoG/threshold detalji lica",
+    "width": 1200,
+    "height": 1500,
+    "mode": "RGB",
+    "size_kb": 2197.1
+  },
+  {
+    "file": "02_silueta_figura.png",
+    "category": "Silueta",
+    "purpose": "Stencil mod + tacnost Cut offseta",
+    "width": 1000,
+    "height": 1400,
+    "mode": "RGB",
+    "size_kb": 168.2
+  },
+  {
+    "file": "03_logo_bw.png",
+    "category": "Logo (rasterski)",
+    "purpose": "Ostrina uglova u vektorizaciji",
+    "width": 900,
+    "height": 900,
+    "mode": "RGB",
+    "size_kb": 37.9
+  },
+  {
+    "file": "04_tekst_serif.png",
+    "category": "Tekst / tipografija",
+    "purpose": "Ocuvanje unutrasnjih supljina slova",
+    "width": 1800,
+    "height": 700,
+    "mode": "RGB",
+    "size_kb": 91.1
+  },
+  {
+    "file": "05_crtez_line_art.png",
+    "category": "Crtez (line art)",
+    "purpose": "Single-line skeletonizacija i spur pruning",
+    "width": 1200,
+    "height": 1200,
+    "mode": "RGB",
+    "size_kb": 1746.7
+  },
+  {
+    "file": "06_kompleksna_pozadina.png",
+    "category": "Kompleksna pozadina",
+    "purpose": "Otpornost rembg segmentacije",
+    "width": 1400,
+    "height": 1000,
+    "mode": "RGB",
+    "size_kb": 1776.8
+  },
+  {
+    "file": "07_sitni_detalji.png",
+    "category": "Sitni detalji",
+    "purpose": "min_island_area filter (sprecavanje hiljada tackica)",
+    "width": 1200,
+    "height": 1200,
+    "mode": "RGB",
+    "size_kb": 235.0
+  },
+  {
+    "file": "08_niska_rezolucija_300.png",
+    "category": "Niska rezolucija",
+    "purpose": "Upscale / bilateralno glacanje pre obrade",
+    "width": 300,
+    "height": 300,
+    "mode": "RGB",
+    "size_kb": 6.1
+  },
+  {
+    "file": "09_visoka_rezolucija_4k.png",
+    "category": "Visoka rezolucija",
+    "purpose": "Automatski downscale i memorijska stabilnost",
+    "width": 3840,
+    "height": 2160,
+    "mode": "RGB",
+    "size_kb": 4884.2
+  },
+  {
+    "file": "10_transparentni_stiker.png",
+    "category": "Transparentni PNG",
+    "purpose": "Direktno citanje postojeceg alfa kanala",
+    "width": 1000,
+    "height": 1000,
+    "mode": "RGBA",
+    "size_kb": 117.0
+  }
+]

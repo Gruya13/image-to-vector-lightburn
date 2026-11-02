@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>img2vec · Laser / LightBurn</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body x-data="app()" x-init="init()" :class="{ 'is-busy': loading, 'is-error': error }">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">i2v</span>
+      <div class="brand-text">
+        <h1>img2vec</h1>
+        <p>Raster slika &rarr; proizvodni vektor za laser (mm)</p>
+      </div>
+    </div>
+    <div class="status-chips">
+      <span class="chip" :class="health ? (health.potrace ? 'ok' : 'bad') : ''">
+        <span class="dot"></span> potrace
+      </span>
+      <span class="chip" :class="health ? (health.rembg_ready ? 'ok' : 'warn') : ''">
+        <span class="dot"></span> rembg
+      </span>
+      <span class="chip" :class="health ? (health.depth_ready ? 'ok' : 'warn') : ''">
+        <span class="dot"></span> depth
+      </span>
+      <span class="chip muted" x-text="health ? 'v' + health.version : '...'"></span>
+      <span class="chip muted" x-text="health ? health.providers.join(' / ') : ''"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ================= LEVA KOLONA ================= -->
+    <aside class="panel panel-left">
+      <section class="block">
+        <h2>1. Slika</h2>
+        <div class="dropzone" :class="{ 'has-image': image }"
+             @dragover.prevent="dragging = true"
+             @dragleave.prevent="dragging = false"
+             @drop.prevent="onDrop($event)"
+             @click="$refs.fileInput.click()">
+          <input type="file" x-ref="fileInput" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff"
+                 @change="onFile($event)" hidden>
+          <template x-if="!image">
+            <div class="dropzone-empty">
+              <span class="dropzone-icon">&#8681;</span>
+              <strong>Prevuci sliku ovde</strong>
+              <span>ili klikni za izbor &middot; PNG / JPG / WEBP &middot; max 10 MB</span>
+            </div>
+          </template>
+          <template x-if="image">
+            <div class="dropzone-loaded">
+              <img :src="image.original_url" alt="original" class="thumb">
+              <div class="thumb-meta">
+                <strong x-text="image.filename"></strong>
+                <span x-text="image.width + ' x ' + image.height + ' px'"></span>
+                <span x-show="image.original_size[0] !== image.width"
+                      x-text="'original: ' + image.original_size[0] + ' x ' + image.original_size[1]"></span>
+                <span x-show="image.has_alpha">alfa kanal</span>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="row gap" x-show="image">
+          <button class="btn btn-ghost" @click.stop="$refs.fileInput.click()">Zameni sliku</button>
+          <button class="btn btn-ghost" @click.stop="clearImage()">Ukloni</button>
+        </div>
+        <div class="test-images" x-show="testImages.length">
+          <span class="label">Test dataset:</span>
+          <div class="test-buttons">
+            <template x-for="name in testImages" :key="name">
+              <button class="btn btn-tiny" @click="loadTestImage(name)"
+                      x-text="name.replace('.png','').slice(0, 24)"></button>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>2. Rezim</h2>
+        <div class="mode-grid">
+          <template x-for="mode in modes" :key="mode.key">
+            <button class="mode-card" :class="{ active: params.mode === mode.key }"
+                    @click="setMode(mode.key)">
+              <strong x-text="mode.label"></strong>
+              <span x-text="mode.hint"></span>
+            </button>
+          </template>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>3. Material preseti</h2>
+        <div class="row">
+          <select class="input" x-model="presetKey">
+            <option value="">-- izaberi preset --</option>
+            <template x-for="preset in presets" :key="preset.key">
+              <option :value="preset.key"
+                      x-text="preset.name + (preset.builtin ? ' (ugradjen)' : '')"></option>
+            </template>
+          </select>
+          <button class="btn" @click="applyPreset()" :disabled="!presetKey">Primeni</button>
+        </div>
+        <p class="hint" x-show="presetDescription" x-text="presetDescription"></p>
+        <button class="btn btn-ghost btn-full" @click="savePreset()" :disabled="!image">
+          Sacuvaj trenutne parametre kao preset
+        </button>
+      </section>
+
+      <section class="block">
+        <h2>4. Pozadina i maska</h2>
+        <label class="switch">
+          <input type="checkbox" x-model="params.remove_background">
+          <span class="switch-track"></span>
+          <span>Ukloni pozadinu (AI rembg)</span>
+        </label>
+        <div class="row" x-show="params.remove_background">
+          <label class="field-label">Model</label>
+          <select class="input" x-model="params.bg_model">
+            <option value="isnet-general-use">Brzi (ISNet)</option>
+            <option value="birefnet-general">Maksimalni kvalitet (BiRefNet)</option>
+          </select>
+        </div>
+        <label class="switch">
+          <input type="checkbox" x-model="params.invert">
+          <span class="switch-track"></span>
+          <span>Invertuj (tamna pozadina)</span>
+        </label>
+        <p class="hint">Maska subjekta se koristi za AI gravuru i automatski Cut obris.</p>
+      </section>
+    </aside>
+
+    <!-- ================= CENTRALNA KOLONA ================= -->
+    <section class="panel panel-center">
+      <div class="toolbar">
+        <div class="tabs">
+          <button class="tab" :class="{ active: tab === 'vector' }" @click="tab = 'vector'">Vektor</button>
+          <button class="tab" :class="{ active: tab === 'original' }" @click="tab = 'original'">Original</button>
+          <button class="tab" :class="{ active: tab === 'mask' }" @click="tab = 'mask'">Maska</button>
+          <button class="tab" :class="{ active: tab === 'ink' }" @click="tab = 'ink'">Gravura</button>
+        </div>
+        <div class="layers" x-show="tab === 'vector'">
+          <label class="layer-toggle engrave">
+            <input type="checkbox" x-model="layers.engrave" @change="applyLayers()">
+            <span class="swatch"></span> Gravura
+          </label>
+          <label class="layer-toggle cut">
+            <input type="checkbox" x-model="layers.cut" @change="applyLayers()">
+            <span class="swatch"></span> Cut
+          </label>
+          <button class="btn btn-tiny" @click="resetView()">Reset zum</button>
+        </div>
+      </div>
+
+      <div class="viewport" x-ref="viewport"
+           @wheel.prevent="onWheel($event)"
+           @mousedown="onPanStart($event)"
+           @mousemove="onPanMove($event)"
+           @mouseup="onPanEnd()"
+           @mouseleave="onPanEnd()"
+           :class="{ 'is-panning': panning }">
+        <div class="paper" :style="paperStyle()">
+          <div id="svg-host" class="svg-host" x-show="tab === 'vector' && svgMarkup" x-html="svgMarkup"></div>
+          <img x-show="tab === 'original' && image" :src="image ? image.original_url : ''"
+               class="raster" alt="original">
+          <img x-show="tab === 'mask' && result && result.mask_url"
+               :src="result && result.mask_url ? result.mask_url : ''" class="raster" alt="maska">
+          <img x-show="tab === 'ink' && result && result.ink_url"
+               :src="result && result.ink_url ? result.ink_url : ''" class="raster" alt="gravura">
+          <template x-if="!image">
+            <div class="placeholder">
+              <strong>Nema ucitane slike</strong>
+              <span>Prevuci sliku u levu kolonu ili izaberi test primer.</span>
+            </div>
+          </template>
+          <template x-if="image && !svgMarkup && tab === 'vector'">
+            <div class="placeholder">
+              <strong>Vektor se racuna...</strong>
+              <span x-show="!loading">Podesi parametre i pokreni obradu.</span>
+            </div>
+          </template>
+        </div>
+        <div class="viewport-badge" x-show="result">
+          <span x-text="result ? result.width_mm.toFixed(2) + ' x ' + result.height_mm.toFixed(2) + ' mm' : ''"></span>
+          <span class="sep">&middot;</span>
+          <span x-text="'zoom ' + Math.round(zoom * 100) + '%'"></span>
+        </div>
+        <div class="viewport-loading" x-show="loading">
+          <span class="spinner"></span> Obrada u toku...
+        </div>
+      </div>
+
+      <div class="job-bar" x-show="job && job.status !== 'done' && job.status !== 'error'">
+        <div class="progress"><div class="progress-fill" :style="'width:' + (job ? job.progress : 0) + '%'"></div></div>
+        <span x-text="job ? job.message : ''"></span>
+      </div>
+      <div class="warnings" x-show="result && result.warnings.length">
+        <template x-for="warning in (result ? result.warnings : [])" :key="warning">
+          <p class="warning" x-text="warning"></p>
+        </template>
+      </div>
+    </section>
+
+    <!-- ================= DESNA KOLONA ================= -->
+    <aside class="panel panel-right">
+      <section class="block">
+        <h2>Dimenzije i secenje</h2>
+        <div class="row">
+          <label class="field-label">Sirina (mm)</label>
+          <input class="input" type="number" min="1" step="0.5" x-model.number="params.target_width_mm"
+                 @change="params.target_height_mm = null">
+        </div>
+        <div class="row">
+          <label class="field-label">Visina (mm)</label>
+          <input class="input" type="number" min="1" step="0.5" x-model.number="params.target_height_mm"
+                 placeholder="auto (proporcija)">
+        </div>
+        <p class="hint">Ako je visina prazna, proporcija se cuva automatski.</p>
+        <label class="switch">
+          <input type="checkbox" x-model="params.add_cut">
+          <span class="switch-track"></span>
+          <span>Dodaj spoljni Cut obris</span>
+        </label>
+        <div class="row" x-show="params.add_cut">
+          <label class="field-label">Offset (mm)</label>
+          <input class="input" type="range" min="0" max="15" step="0.1"
+                 x-model.number="params.cut_offset_mm">
+          <output class="value" x-text="params.cut_offset_mm.toFixed(1)"></output>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>Parametri obrade</h2>
+
+        <template x-if="params.mode === 'stencil'">
+          <div class="param-group">
+            <div class="row">
+              <label class="field-label">Prag</label>
+              <select class="input" x-model="params.threshold_method">
+                <option value="auto">auto</option>
+                <option value="otsu">Otsu</option>
+                <option value="adaptive">adaptive</option>
+              </select>
+            </div>
+            <div class="row">
+              <label class="field-label">Min. ostrvo (px)</label>
+              <input class="input" type="number" min="0" step="1"
+                     x-model.number="params.min_island_area_px">
+            </div>
+            <div class="row">
+              <label class="field-label">Glacanje</label>
+              <input class="input" type="range" min="0" max="5" step="1"
+                     x-model.number="params.smooth_radius">
+              <output class="value" x-text="params.smooth_radius"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Turdsize (px&sup2;)</label>
+              <input class="input" type="number" min="0" step="1" x-model.number="params.turd_size">
+            </div>
+            <div class="row">
+              <label class="field-label">Glatkoca krivih</label>
+              <input class="input" type="range" min="0.02" max="1.5" step="0.02"
+                     x-model.number="params.opt_tolerance">
+              <output class="value" x-text="params.opt_tolerance.toFixed(2)"></output>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="params.mode === 'centerline'">
+          <div class="param-group">
+            <div class="row">
+              <label class="field-label">Detekcija linija</label>
+              <select class="input" x-model="params.line_threshold_method">
+                <option value="auto">auto</option>
+                <option value="xdog">XDoG</option>
+                <option value="otsu">Otsu</option>
+                <option value="adaptive">adaptive</option>
+              </select>
+            </div>
+            <div class="row">
+              <label class="field-label">Min. slepa grana (px)</label>
+              <input class="input" type="range" min="0" max="40" step="1"
+                     x-model.number="params.min_spur_px">
+              <output class="value" x-text="params.min_spur_px"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Min. duzina (mm)</label>
+              <input class="input" type="range" min="0.1" max="5" step="0.1"
+                     x-model.number="params.min_path_length_mm">
+              <output class="value" x-text="params.min_path_length_mm.toFixed(1)"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Spajanje (mm)</label>
+              <input class="input" type="range" min="0" max="1" step="0.05"
+                     x-model.number="params.merge_tolerance_mm">
+              <output class="value" x-text="params.merge_tolerance_mm.toFixed(2)"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Uproscavanje (mm)</label>
+              <input class="input" type="range" min="0" max="0.5" step="0.01"
+                     x-model.number="params.simplify_tolerance_mm">
+              <output class="value" x-text="params.simplify_tolerance_mm.toFixed(2)"></output>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="params.mode === 'mesh'">
+          <div class="param-group">
+            <div class="row">
+              <label class="field-label">Rastojanje (mm)</label>
+              <input class="input" type="range" min="1" max="10" step="0.5"
+                     x-model.number="params.mesh_spacing_mm">
+              <output class="value" x-text="params.mesh_spacing_mm.toFixed(1)"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Max ivica (mm)</label>
+              <input class="input" type="range" min="3" max="30" step="1"
+                     x-model.number="params.mesh_max_edge_mm">
+              <output class="value" x-text="params.mesh_max_edge_mm.toFixed(0)"></output>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="params.mode === 'wireframe'">
+          <div class="param-group">
+            <div class="row">
+              <label class="field-label">Nivoi dubine</label>
+              <input class="input" type="range" min="6" max="40" step="1"
+                     x-model.number="params.depth_levels">
+              <output class="value" x-text="params.depth_levels"></output>
+            </div>
+            <div class="row">
+              <label class="field-label">Paralaksa</label>
+              <input class="input" type="range" min="0" max="1" step="0.05"
+                     x-model.number="params.depth_parallax">
+              <output class="value" x-text="params.depth_parallax.toFixed(2)"></output>
+            </div>
+            <button class="btn btn-full" @click="runWireframe()"
+                    :disabled="!image || (job && job.status === 'running')">
+              Generisi 3D wireframe (asinhrono)
+            </button>
+          </div>
+        </template>
+      </section>
+
+      <section class="block">
+        <h2>Statistika</h2>
+        <dl class="stats" x-show="result">
+          <dt>Putanja</dt><dd x-text="result ? result.stats.path_count : '-'"></dd>
+          <dt>Cvorova</dt><dd x-text="result ? result.stats.node_count : '-'"></dd>
+          <dt>Duzina lasera</dt><dd x-text="result ? result.stats.total_length_m.toFixed(2) + ' m' : '-'"></dd>
+          <dt>Obrada</dt><dd x-text="result ? Math.round(result.timings_ms.total) + ' ms' : '-'"></dd>
+        </dl>
+        <div class="legend" x-show="result">
+          <span><i class="swatch engrave"></i> Gravura #000000</span>
+          <span><i class="swatch cut"></i> Cut #FF0000</span>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2>Izvoz</h2>
+        <button class="btn btn-primary btn-full" @click="download('svg')" :disabled="!result">
+          Preuzmi SVG (mm)
+        </button>
+        <button class="btn btn-full" @click="download('dxf')" :disabled="!result">
+          Preuzmi DXF (R2010)
+        </button>
+        <button class="btn btn-ghost btn-full" @click="download('png')" :disabled="!result">
+          Preuzmi PNG preview
+        </button>
+        <p class="hint">SVG: width/height u mm, viewBox 1:1, LightBurn paleta slojeva.</p>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" x-show="error" x-transition @click="error = ''">
+    <strong>Greska:</strong> <span x-text="error"></span>
+  </div>
+  <div class="toast toast-ok" x-show="notice" x-transition @click="notice = ''">
+    <span x-text="notice"></span>
+  </div>
+</body>
+</html>
